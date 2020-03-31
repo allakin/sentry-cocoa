@@ -26,7 +26,7 @@
 #import <Sentry/SentrySDK.h>
 #import <Sentry/SentryIntegrationProtocol.h>
 #import <Sentry/SentryGlobalEventProcessor.h>
-
+#import <Sentry/SentryThread.h>
 #else
 #import "SentryClient.h"
 #import "SentryLog.h"
@@ -46,6 +46,7 @@
 #import "SentrySDK.h"
 #import "SentryIntegrationProtocol.h"
 #import "SentryGlobalEventProcessor.h"
+#import "SentryThread.m"
 #endif
 
 #if SENTRY_HAS_UIKIT
@@ -82,22 +83,13 @@ NS_ASSUME_NONNULL_BEGIN
     return _transport;
 }
 
-- (NSString *_Nullable)captureMessage:(NSString *)message withScope:(SentryScope *_Nullable)scope {
-    SentryEvent *event = [[SentryEvent alloc] initWithLevel:kSentryLevelInfo];
-    // TODO: Attach stacktrace?
-    event.message = message;
-    return [self captureEvent:event withScope:scope];
-}
-
-- (NSString *_Nullable)captureException:(NSException *)exception withScope:(SentryScope *_Nullable)scope {
-    SentryEvent *event = [[SentryEvent alloc] initWithLevel:kSentryLevelError];
-    
-    NSLog(@"%@", [NSThread callStackSymbols]);
-    NSLog(@"%@", [NSThread callStackReturnAddresses]);
-    NSString *sourceString = [[NSThread callStackSymbols] objectAtIndex:0];
+- (void)attachThreadWithStacktraceToEvent:(SentryEvent *)event {
+    NSLog(@"a %@", [NSThread callStackSymbols]);
+    NSLog(@"b %@", [NSThread callStackReturnAddresses]);
+    NSString *sourceString = [NSString stringWithFormat:@"%@", [NSThread callStackSymbols]];
     // Example: 1   UIKit                               0x00540c89 -[UIApplication _callInitializationDelegatesForURL:payload:suspended:] + 1163
-    NSCharacterSet *separatorSet = [NSCharacterSet characterSetWithCharactersInString:@" -[]+?.,"];
-    NSMutableArray *array = [NSMutableArray arrayWithArray:[sourceString  componentsSeparatedByCharactersInSet:separatorSet]];
+    NSCharacterSet *separatorSet = [NSCharacterSet characterSetWithCharactersInString:@"\n"];
+    NSMutableArray *array = [NSMutableArray arrayWithArray:[sourceString componentsSeparatedByCharactersInSet:separatorSet]];
     [array removeObject:@""];
 
     NSLog(@"Source %@", sourceString);
@@ -106,15 +98,27 @@ NS_ASSUME_NONNULL_BEGIN
     NSLog(@"Memory address = %@", [array objectAtIndex:2]);
     NSLog(@"Class caller = %@", [array objectAtIndex:3]);
     NSLog(@"Function caller = %@", [array objectAtIndex:4]);
-    
-    // TODO: Capture Stacktrace
+}
+
+- (NSString *_Nullable)captureMessage:(NSString *)message withScope:(SentryScope *_Nullable)scope {
+    SentryEvent *event = [[SentryEvent alloc] initWithLevel:kSentryLevelInfo];
+    // TODO Add attach stacktrace
+    event.message = message;
+    return [self captureEvent:event withScope:scope];
+}
+
+- (NSString *_Nullable)captureException:(NSException *)exception withScope:(SentryScope *_Nullable)scope {
+    SentryEvent *event = [[SentryEvent alloc] initWithLevel:kSentryLevelError];
+    // TODO: NSException.callStackSymbols
+    // TODO: NSException.callStackReturnAddresses
+    [self attachThreadWithStacktraceToEvent:event];
     event.message = exception.reason;
     return [self captureEvent:event withScope:scope];
 }
 
 - (NSString *_Nullable)captureError:(NSError *)error withScope:(SentryScope *_Nullable)scope {
     SentryEvent *event = [[SentryEvent alloc] initWithLevel:kSentryLevelError];
-    // TODO: Capture Stacktrace
+    [self attachThreadWithStacktraceToEvent:event];
     event.message = error.localizedDescription;
     return [self captureEvent:event withScope:scope];
 }
